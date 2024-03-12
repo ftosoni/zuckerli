@@ -24,6 +24,8 @@ namespace zuckerli {
 
 MemoryMappedFile::MemoryMappedFile(const std::string &filename) {
   struct stat st;
+  //printf("ifname @%s@", filename.c_str());
+  //exit(0);
   int ret = stat(filename.c_str(), &st);
   ZKR_ASSERT(ret == 0);
   size_ = st.st_size;

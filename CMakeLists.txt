@@ -158,3 +158,6 @@ target_link_libraries(encoder encode)
 
 add_executable(decoder src/decode_main.cc)
 target_link_libraries(decoder decode)
+
+add_executable(multiplier src/multiply_main.cc)
+target_link_libraries(multiplier decode)

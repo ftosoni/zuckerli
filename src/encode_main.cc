@@ -11,6 +11,8 @@ ABSL_FLAG(std::string, output_path, "", "Output file path");
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
   FILE* out = fopen(absl::GetFlag(FLAGS_output_path).c_str(), "w");
+  //printf("ciao @%s@", absl::GetFlag(FLAGS_output_path).c_str());
+  //exit(0);
   if (out == nullptr) {
     fprintf(stderr, "Invalid output file %s\n", argv[2]);
   }
