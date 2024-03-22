@@ -6,8 +6,7 @@ Compression format and data structures for large graphs.
 ``` shell
 git clone https://github.com/google/zuckerli
 cd zuckerli
-git submodule init
-git submodule update
+git submodule update --init --recursive
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 make -j 12
