@@ -6,7 +6,8 @@ Compression format and data structures for large graphs.
 ``` shell
 git clone https://github.com/google/zuckerli
 cd zuckerli
-git clone https://github.com/abseil/abseil-cpp.git
+git submodule init
+git submodule update
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 make -j 12
