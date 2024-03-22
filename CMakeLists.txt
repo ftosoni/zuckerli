@@ -15,7 +15,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-add_compile_options(-fcolor-diagnostics -Wall)
+# add_compile_options(-fcolor-diagnostics -Wall)
+add_compile_options(-Wall)
 
 find_package(Threads REQUIRED)
 
