@@ -162,3 +162,6 @@ target_link_libraries(decoder decode)
 
 add_executable(multiplier src/multiply_main.cc)
 target_link_libraries(multiplier decode)
+
+add_executable(multiplier_pthread src/multiply_main_pthread.cc)
+target_link_libraries(multiplier_pthread decode)

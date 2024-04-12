@@ -1,10 +1,21 @@
-import struct
+import struct, sys
 
-outfilepath = 'invec14'
-outfile = open(outfilepath, 'wb')
+def main() :
+    if len(sys.argv) != 1+1 :
+        print('Usage is:', sys.argv[0], '<#nodes>')
+        exit(-1)
+    
+    #args
+    nnodes = int(sys.argv[1])
 
-for i in range(14) :
-    b = struct.pack('d', i%10)
-    outfile.write(b)
+    outfilepath = f'invec{nnodes}'
+    outfile = open(outfilepath, 'wb')
 
-outfile.close()
+    for i in range(nnodes) :
+        b = struct.pack('d', i%10)
+        outfile.write(b)
+
+    outfile.close()
+
+if __name__ == '__main__' :
+    main()
