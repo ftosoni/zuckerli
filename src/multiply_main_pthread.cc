@@ -1,3 +1,6 @@
+// --input_path web-edu --input_vector_path invec3032 --output_vector_path web-edu.zkr.out --par_degree 4
+// /home/tosoni/CLionProjects/zuckerli/gen_graphs
+
 #include <cstdio>
 
 #include "common.h"
