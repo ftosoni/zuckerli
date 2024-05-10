@@ -77,8 +77,8 @@ int main(int argc, char** argv) {
         double contrib_dn = 0;
         for(size_t x=0; x<nnodes; ++x) {
             contrib_dn += (outdeg[x] == 0) * invec[x]; //contribution of dangling nodes
-            invec[x] /= outdeg[x]; //divide input vector by outdegree
-            outvec[x] = 0x0; //0-init
+            if (outdeg[x]==0) invec[x] /= outdeg[x]; //divide input vector by outdegree
+            outvec[x] = 0.0; //0-init
         }
         contrib_dn /= nnodes;
 
