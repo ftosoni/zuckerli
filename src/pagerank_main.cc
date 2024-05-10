@@ -74,17 +74,13 @@ int main(int argc, char** argv) {
             invec = std::move(tmp);
         }
 
-        //contribution of dangling nodes
         double contrib_dn = 0;
-        for (size_t c = 0; c < nnodes; ++c) {
-            contrib_dn += (outdeg[c] == 0) * invec[c];
-        }
-        contrib_dn /= nnodes;
-
         for(size_t x=0; x<nnodes; ++x) {
+            contrib_dn += (outdeg[x] == 0) * invec[x]; //contribution of dangling nodes
             invec[x] /= outdeg[x]; //divide input vector by outdegree
             outvec[x] = 0x0; //0-init
         }
+        contrib_dn /= nnodes;
 
         //multiplication
         if (!zuckerli::DecodeGraph(data, invec, outvec)) {
