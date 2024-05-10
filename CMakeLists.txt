@@ -165,3 +165,6 @@ target_link_libraries(multiplier decode)
 
 add_executable(multiplier_pthread src/multiply_main_pthread.cc)
 target_link_libraries(multiplier_pthread decode)
+
+add_executable(pageranker src/pagerank_main.cc)
+target_link_libraries(pageranker decode)
