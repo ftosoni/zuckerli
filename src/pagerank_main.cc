@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <fstream>
 
 #include "common.h"
 #include "multiply.h"
@@ -6,10 +7,13 @@
 #include "encode.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "pagerank_utils.h"
 
 ABSL_FLAG(std::string, input_path, "", "Input file path");
-ABSL_FLAG(std::string, input_vector_path, "", "Input vector path");
-ABSL_FLAG(std::string, output_vector_path, "", "Output vector path");
+//ABSL_FLAG(std::string, input_vector_path, "", "Input vector path");
+//ABSL_FLAG(std::string, output_vector_path, "", "Output vector path");
+ABSL_FLAG(std::string, ccount_path, "", "Column count");
+//ABSL_FLAG(std::string, par_degree, "", "Parallelism degree");
 
 int main(int argc, char** argv) {
     absl::ParseCommandLine(argc, argv);
@@ -28,34 +32,30 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> data(len);
     ZKR_ASSERT(fread(data.data(), 1, len, in) == len);
 
-    //outvec
-    FILE *in_invec = fopen(absl::GetFlag(FLAGS_input_vector_path).c_str(), "r");
-    ZKR_ASSERT(in_invec);
-
-    fseek(in_invec, 0, SEEK_END);
-    size_t len_invec = ftell(in_invec);
-    fseek(in_invec, 0, SEEK_SET);
-
-    //structures
-    assert(len_invec % sizeof(double) == 0);
-    const size_t nnodes = len_invec / sizeof(double);
-    std::vector<double> outvec(nnodes), invec(nnodes);
-    std::vector<uint32_t> outdeg(nnodes);
-    ZKR_ASSERT(fread(outvec.data(), 1, len_invec, in_invec) == len_invec);
-
-    //normalise input vector
+    //reading column count files
+    uint32_t nnodes;
     {
-        double xsum = 0;
-        for(size_t c=0; c<nnodes; ++c) {
-            xsum += outvec[c];
+        std::ifstream file(absl::GetFlag(FLAGS_ccount_path).c_str(), std::ios::binary);  // Open the file in binary mode
+        if (!file) {
+            std::cout << "Failed to open the file." << std::endl;
+            return 1;
         }
-        for(size_t c=0; c<nnodes; ++c) {
-            outvec[c] /= xsum;
-        }
+        // Move the file pointer to the end of the file
+        file.seekg(0, std::ios::end);
+        // Get the position of the file pointer, which represents the length of the file
+        std::streampos length = file.tellg();
+        nnodes = length / sizeof(u_int32_t);
+        file.close();
     }
 
-    constexpr size_t NITERS = 8;
-    constexpr double ALPHA = 0.3;
+    //structures
+    std::vector<double> outvec(nnodes, 1.0/nnodes), invec(nnodes);
+    std::vector<uint32_t> outdeg(nnodes);
+    {
+        FILE *outdegfile = fopen(absl::GetFlag(FLAGS_ccount_path).c_str(), "r");
+        ZKR_ASSERT(fread(outdeg.data(), sizeof(u_int32_t), nnodes, outdegfile) == nnodes);
+        fclose(outdegfile);
+    }
 
     //business logic
 
@@ -97,11 +97,28 @@ int main(int argc, char** argv) {
 
 //    for(auto const &e : outvec) std::cout << e << std::endl;
 
-    //outfile
-    FILE *out_outvec = fopen(absl::GetFlag(FLAGS_output_vector_path).c_str(), "wb");  // Open in binary format
-    ZKR_ASSERT(out_outvec);
-    fwrite(outvec.data(), sizeof(double), outvec.size(), out_outvec);
-    fclose(out_outvec);  // Close the file
+    // retrieve topk nodes
+    unsigned topk = std::min<unsigned>(TOPK, nnodes);
+    unsigned *top = (unsigned *) calloc(topk, sizeof(*top));
+    unsigned *aux = (unsigned *) calloc(topk, sizeof(*top));
+    if(top==NULL || aux==NULL){
+        perror("Cannot allocate topk/aux array");
+        exit(-1);
+    }
+    kLargest(outvec,aux,nnodes,topk);
+    // get sorted nodes in top
+    for(long int i=topk-1;i>=0;i--) {
+        top[i] = aux[0];
+        aux[0] = aux[i];
+        minHeapify(outvec,aux,i,0);
+    }
+    // report topk nodes id's only on stdout
+    fprintf(stdout,"Top:");
+    for(int i=0;i<topk;i++) fprintf(stdout," %d",top[i]);
+    fprintf(stdout,"\n");
+    //deallocate
+    free(top);
+    free(aux);
 
     return EXIT_SUCCESS;
 }

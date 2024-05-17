@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <thread>
+#include <fstream>
 
 #include "common.h"
 #include "multiply.h"
@@ -7,10 +8,12 @@
 #include "encode.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "pagerank_utils.h"
 
 ABSL_FLAG(std::string, input_path, "", "Input file path");
-ABSL_FLAG(std::string, input_vector_path, "", "Input vector path");
-ABSL_FLAG(std::string, output_vector_path, "", "Output vector path");
+//ABSL_FLAG(std::string, input_vector_path, "", "Input vector path");
+//ABSL_FLAG(std::string, output_vector_path, "", "Output vector path");
+ABSL_FLAG(std::string, ccount_path, "", "Column count");
 ABSL_FLAG(std::string, par_degree, "", "Parallelism degree");
 
 int main(int argc, char** argv) {
@@ -62,107 +65,34 @@ int main(int argc, char** argv) {
         threads[tid].join();
     }
 
-    //outvec
-    FILE *in_invec = fopen(absl::GetFlag(FLAGS_input_vector_path).c_str(), "r");
-    ZKR_ASSERT(in_invec);
 
-    fseek(in_invec, 0, SEEK_END);
-    size_t len_invec = ftell(in_invec);
-    fseek(in_invec, 0, SEEK_SET);
+    //reading column count files
+    uint32_t nnodes;
+    {
+        std::ifstream file(absl::GetFlag(FLAGS_ccount_path).c_str(), std::ios::binary);  // Open the file in binary mode
+        if (!file) {
+            std::cout << "Failed to open the file." << std::endl;
+            return 1;
+        }
+        // Move the file pointer to the end of the file
+        file.seekg(0, std::ios::end);
+        // Get the position of the file pointer, which represents the length of the file
+        std::streampos length = file.tellg();
+        nnodes = length / sizeof(u_int32_t);
+        file.close();
+    }
 
     //structures
-    assert(len_invec % sizeof(double) == 0);
-    const size_t nnodes = len_invec / sizeof(double);
-    std::vector<double> outvec(nnodes), invec(nnodes);
+    std::vector<double> outvec(nnodes, 1.0/nnodes), invec(nnodes);
     std::vector<uint32_t> outdeg(nnodes);
-    ZKR_ASSERT(fread(outvec.data(), 1, len_invec, in_invec) == len_invec);
-
-    //sum input vector
-    double* xsum_helper = (double *) calloc(NT, sizeof(double ));
-    auto xsum_f = [](
-            std::vector<double> &outvec,
-            double *xsum_helper,
-            const size_t nnodes,
-            const uint8_t NT,
-            const uint8_t tid
-    ){
-        xsum_helper[tid] = 0.0;
-        const size_t col_block_size = (nnodes + NT - 1) / NT;
-        const size_t col_bgn = tid * col_block_size;
-        const size_t col_end = std::min<size_t>((tid + 1) * col_block_size, nnodes);
-//        assert(col_end > col_bgn);
-        for(size_t c=col_bgn; c<col_end; c++) {
-            xsum_helper[tid] += outvec[c];
-        }
-    };
-    double xsum = 0.0;
-    for(uint8_t tid=0; tid<NT; ++tid) {
-        threads[tid] = std::thread(xsum_f, std::ref(outvec), xsum_helper, nnodes, NT, tid);
-    }
-    for(uint8_t tid=0; tid<NT; ++tid) {
-        threads[tid].join();
-        xsum += xsum_helper[tid];
-    }
-    free(xsum_helper);
-
-    //normalise input vector
-    auto xnormalise_f = [](
-            std::vector<double> &outvec,
-            const double xsum,
-            const size_t nnodes,
-            const uint8_t NT,
-            const uint8_t tid
-    ){
-        const size_t col_block_size = (nnodes + NT - 1) / NT;
-        const size_t col_bgn = tid * col_block_size;
-        const size_t col_end = std::min<size_t>((tid + 1) * col_block_size, nnodes);
-//        assert(col_end > col_bgn);
-        for(size_t c=col_bgn; c<col_end; c++) {
-            outvec[c] /= xsum;
-        }
-    };
-    for(uint8_t tid=0; tid<NT; ++tid) {
-        threads[tid] = std::thread(xnormalise_f, std::ref(outvec), xsum, nnodes, NT, tid);
-    }
-    for(uint8_t tid=0; tid<NT; ++tid) {
-        threads[tid].join();
+    {
+        FILE *outdegfile = fopen(absl::GetFlag(FLAGS_ccount_path).c_str(), "r");
+        ZKR_ASSERT(fread(outdeg.data(), sizeof(u_int32_t), nnodes, outdegfile) == nnodes);
+        fclose(outdegfile);
     }
 
-    constexpr size_t NITERS = 8;
-    constexpr double ALPHA = 0.3;
 
     //business logic
-
-    //computing outdegree
-    std::vector<std::vector<uint32_t>> outdeg_helper(NT-1);
-    auto outdegree_f = [](
-            std::vector<uint8_t> &datavec_component,
-            std::vector<uint32_t> &outdeg_helper_component
-            ) {
-        if (!zuckerli::ComputeOutDeg(datavec_component, outdeg_helper_component)) {
-            fprintf(stderr, "Invalid graph\n");
-        }
-    };
-    //map
-    {
-        const uint8_t tid = 0; //first thread
-        threads[tid] = std::thread(outdegree_f, std::ref(datavec[tid]), std::ref(outdeg));
-    }
-    for(uint8_t tid=1; tid<NT; ++tid) { //other threads
-        threads[tid] = std::thread(outdegree_f, std::ref(datavec[tid]), std::ref(outdeg_helper[tid-1]));
-    }
-    //reduce
-    threads[0].join();
-    assert(outdeg.size() == nnodes);
-    for(uint8_t tid=1; tid<NT; ++tid) { //other threads
-        threads[tid].join();
-        assert(outdeg_helper[tid-1].size() == nnodes);
-        for(size_t c=0; c<nnodes; ++c) {
-            outdeg[c] += outdeg_helper[tid-1][c];
-        }
-        outdeg_helper[tid-1].clear();
-    }
-    outdeg_helper.clear();
 
     //starting the loop
     double *contrib_dn_helper = (double *) calloc(NT, sizeof(double));
@@ -246,13 +176,30 @@ int main(int argc, char** argv) {
     }
     free(contrib_dn_helper);
 
-    for(auto const &e : outvec) std::cout << e << std::endl;
+//    for(auto const &e : outvec) std::cout << e << std::endl;
 
-    //outfile
-    FILE *out_outvec = fopen(absl::GetFlag(FLAGS_output_vector_path).c_str(), "wb");  // Open in binary format
-    ZKR_ASSERT(out_outvec);
-    fwrite(outvec.data(), sizeof(double), outvec.size(), out_outvec);
-    fclose(out_outvec);  // Close the file
+    // retrieve topk nodes
+    unsigned topk = std::min<unsigned>(TOPK, nnodes);
+    unsigned *top = (unsigned *) calloc(topk, sizeof(*top));
+    unsigned *aux = (unsigned *) calloc(topk, sizeof(*top));
+    if(top==NULL || aux==NULL){
+        perror("Cannot allocate topk/aux array");
+        exit(-1);
+    }
+    kLargest(outvec,aux,nnodes,topk);
+    // get sorted nodes in top
+    for(long int i=topk-1;i>=0;i--) {
+        top[i] = aux[0];
+        aux[0] = aux[i];
+        minHeapify(outvec,aux,i,0);
+    }
+    // report topk nodes id's only on stdout
+    fprintf(stdout,"Top:");
+    for(int i=0;i<topk;i++) fprintf(stdout," %d",top[i]);
+    fprintf(stdout,"\n");
+    //deallocate
+    free(top);
+    free(aux);
 
     return EXIT_SUCCESS;
 }

@@ -166,8 +166,8 @@ target_link_libraries(multiplier decode)
 add_executable(multiplier_pthread src/multiply_main_pthread.cc)
 target_link_libraries(multiplier_pthread decode)
 
-add_executable(pageranker src/pagerank_main.cc)
+add_executable(pageranker src/pagerank_main.cc src/pagerank_utils.h)
 target_link_libraries(pageranker decode)
 
-add_executable(pageranker_pthread src/pagerank_main_pthread.cc)
+add_executable(pageranker_pthread src/pagerank_main_pthread.cc src/pagerank_utils.h)
 target_link_libraries(pageranker_pthread decode)
