@@ -14,7 +14,23 @@ ABSL_FLAG(std::string, input_path, "", "Input file path");
 //ABSL_FLAG(std::string, input_vector_path, "", "Input vector path");
 //ABSL_FLAG(std::string, output_vector_path, "", "Output vector path");
 ABSL_FLAG(std::string, ccount_path, "", "Column count");
-ABSL_FLAG(std::string, par_degree, "", "Parallelism degree");
+
+ABSL_FLAG(std::string, verbose, "0", "verbose");
+ABSL_FLAG(std::string, maxiter, "100", "maximum number of iteration, def. 100");
+ABSL_FLAG(std::string, dampf, "0.9", "damping factor (default 0.9)");
+ABSL_FLAG(std::string, topk, "3", "show top K nodes (default 3)");
+ABSL_FLAG(std::string, pardegree, "2", "parallelism degree, def. 2");
+
+static void usage_and_exit(char *name) {
+    fprintf(stderr, "Usage:\n\t  %s [options] --input_path matrix_name --ccount_path col_count_file\n", name);
+    fprintf(stderr, "\t\t--verbose        verbose, def. 0\n");
+    fprintf(stderr,"\t\t--pardegree       parallelism degree, def. 2\n");
+    fprintf(stderr, "\t\t--maxiter        maximum number of iteration, def. 100\n");
+//    fprintf(stderr,"\t\t-e eps         stop if error<eps (default ignore error)\n");
+    fprintf(stderr, "\t\t--dampf          damping factor (default 0.9)\n");
+    fprintf(stderr, "\t\t--topk           show top K nodes (default 3)\n");
+    exit(1);
+}
 
 int main(int argc, char** argv) {
     absl::ParseCommandLine(argc, argv);
@@ -23,8 +39,30 @@ int main(int argc, char** argv) {
     (void) absl::GetFlag(FLAGS_greedy_random_access);
 
     //args
-    const uint8_t NT = atoi(absl::GetFlag(FLAGS_par_degree).c_str());
-    assert(NT);
+    const int verbose=atoi(absl::GetFlag(FLAGS_verbose).c_str());
+    const int maxiter=atoi(absl::GetFlag(FLAGS_maxiter).c_str());
+    const double dampf=atof(absl::GetFlag(FLAGS_dampf).c_str());
+    int topk=atoi(absl::GetFlag(FLAGS_topk).c_str());
+    const int NT=atoi(absl::GetFlag(FLAGS_pardegree).c_str());
+    if(verbose>0) {
+        fputs("==== Command line:\n",stderr);
+        for(int i=0;i<argc;i++)
+            fprintf(stderr," %s",argv[i]);
+        fputs("\n",stderr);
+    }
+    // check command line
+    if(maxiter<1 || topk<1) {
+        fprintf(stderr,"Error! Options --maxiter and --topk must be at least one\n");
+        usage_and_exit(argv[0]);
+    }
+    if(NT<2) {
+        fprintf(stderr,"Error! Option --pardegree must be at least two\n");
+        usage_and_exit(argv[0]);
+    }
+    if(dampf<0 || dampf>1) {
+        fprintf(stderr,"Error! Options --dampf must be in the range [0,1]\n");
+        usage_and_exit(argv[0]);
+    }
 
     //params
     std::vector<std::thread> threads(NT);
@@ -96,7 +134,7 @@ int main(int argc, char** argv) {
 
     //starting the loop
     double *contrib_dn_helper = (double *) calloc(NT, sizeof(double));
-    for(size_t iter=0; iter < NITERS; ++iter) {
+    for(size_t iter=0; iter < maxiter; ++iter) {
         //swap invec & outvec
         {
             std::vector<double> tmp = std::move(outvec);
@@ -156,6 +194,7 @@ int main(int argc, char** argv) {
                 std::vector<double> &outvec,
                 const double contrib_dn,
                 const size_t nnodes,
+                const double dampf,
                 const uint8_t NT,
                 const uint8_t tid) {
             const size_t row_block_size = (nnodes + NT - 1) / NT;
@@ -163,11 +202,11 @@ int main(int argc, char** argv) {
             const size_t row_end = std::min<size_t>((tid + 1) * row_block_size, nnodes);
             for (size_t r = row_bgn; r < row_end; ++r) {
                 outvec[r] += contrib_dn; //dangling nodes
-                outvec[r] = (1 - ALPHA) * outvec[r] + ALPHA / nnodes; //teleporting
+                outvec[r] = dampf * outvec[r] + (1-dampf) / nnodes; //teleporting
             }
         };
         for(uint8_t tid=0; tid<NT; ++tid) {
-            threads[tid] = std::thread(finalise_f, std::ref(outvec), contrib_dn, nnodes, NT, tid);
+            threads[tid] = std::thread(finalise_f, std::ref(outvec), contrib_dn, dampf, nnodes, NT, tid);
         }
         for(uint8_t tid=0; tid<NT; ++tid) {
             threads[tid].join();
@@ -178,8 +217,14 @@ int main(int argc, char** argv) {
 
 //    for(auto const &e : outvec) std::cout << e << std::endl;
 
+    if(verbose>0) {
+        double sum = 0.0;
+        for(int i=0;i<nnodes;i++) sum += outvec[i];
+        fprintf(stderr,"Sum of ranks: %f (should be 1)\n",sum);
+    }
+
     // retrieve topk nodes
-    unsigned topk = std::min<unsigned>(TOPK, nnodes);
+    topk = std::min<int>(topk, nnodes);
     unsigned *top = (unsigned *) calloc(topk, sizeof(*top));
     unsigned *aux = (unsigned *) calloc(topk, sizeof(*top));
     if(top==NULL || aux==NULL){
@@ -192,6 +237,11 @@ int main(int argc, char** argv) {
         top[i] = aux[0];
         aux[0] = aux[i];
         minHeapify(outvec,aux,i,0);
+    }
+    // report topk nodes sorted by decreasing rank
+    if (verbose>0) {
+        fprintf(stderr, "Top %d ranks:\n",topk);
+        for(int i=0;i<topk;i++) fprintf(stderr,"  %d %lf\n",top[i],outvec[top[i]]);
     }
     // report topk nodes id's only on stdout
     fprintf(stdout,"Top:");

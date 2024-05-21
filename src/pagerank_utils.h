@@ -1,7 +1,3 @@
-const size_t NITERS = 8;
-const double ALPHA = 0.3;
-const unsigned TOPK = 3;
-
 // heap based algorithm for finding the k largest ranks
 // in heap order
 
