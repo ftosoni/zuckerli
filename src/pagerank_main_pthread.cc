@@ -189,6 +189,8 @@ int main(int argc, char** argv) {
             threads[tid].join();
         }
 
+        int a = 2;
+
         //finalisation
         auto finalise_f = [](
                 std::vector<double> &outvec,
@@ -206,7 +208,7 @@ int main(int argc, char** argv) {
             }
         };
         for(uint8_t tid=0; tid<NT; ++tid) {
-            threads[tid] = std::thread(finalise_f, std::ref(outvec), contrib_dn, dampf, nnodes, NT, tid);
+            threads[tid] = std::thread(finalise_f, std::ref(outvec), contrib_dn, nnodes, dampf, NT, tid);
         }
         for(uint8_t tid=0; tid<NT; ++tid) {
             threads[tid].join();
