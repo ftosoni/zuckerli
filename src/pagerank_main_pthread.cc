@@ -10,6 +10,14 @@
 #include "absl/flags/parse.h"
 #include "pagerank_utils.h"
 
+inline static void set_core(std::thread *tid, int core) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core, &cpuset);
+    pthread_setaffinity_np(tid->native_handle(),sizeof(cpu_set_t), &cpuset);
+    return;
+};
+
 ABSL_FLAG(std::string, input_path, "", "Input file path");
 //ABSL_FLAG(std::string, input_vector_path, "", "Input vector path");
 //ABSL_FLAG(std::string, output_vector_path, "", "Output vector path");
@@ -98,6 +106,7 @@ int main(int argc, char** argv) {
     };
     for(uint8_t tid=0; tid<NT; ++tid){
         threads[tid] = std::thread(read_data_f, std::ref(datavec), NT, tid);
+        set_core(&threads[tid], tid);
     }
     for(uint8_t tid=0; tid<NT; ++tid){
         threads[tid].join();
@@ -165,6 +174,7 @@ int main(int argc, char** argv) {
         };
         for(uint8_t tid=0; tid<NT; ++tid){
             threads[tid] = std::thread(contrib_dn_f, contrib_dn_helper, nnodes, std::ref(outdeg), std::ref(invec), std::ref(outvec), NT, tid);
+            set_core(&threads[tid], tid);       
         }
         for(uint8_t tid=0; tid<NT; ++tid){
             threads[tid].join();
@@ -184,12 +194,11 @@ int main(int argc, char** argv) {
         };
         for(uint8_t tid=0; tid<NT; ++tid) {
             threads[tid] = std::thread(mult_f, std::ref(datavec[tid]), std::ref(invec), std::ref(outvec));
+            set_core(&threads[tid], tid);
         }
         for(uint8_t tid=0; tid<NT; ++tid) {
             threads[tid].join();
         }
-
-        int a = 2;
 
         //finalisation
         auto finalise_f = [](
@@ -209,6 +218,7 @@ int main(int argc, char** argv) {
         };
         for(uint8_t tid=0; tid<NT; ++tid) {
             threads[tid] = std::thread(finalise_f, std::ref(outvec), contrib_dn, nnodes, dampf, NT, tid);
+            set_core(&threads[tid], tid);
         }
         for(uint8_t tid=0; tid<NT; ++tid) {
             threads[tid].join();
