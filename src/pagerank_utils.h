@@ -1,3 +1,35 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <thread>
+#include <sched.h>
+
+inline static int set_core(std::thread *thread, int tid, const int ncores) {
+    // Set thread affinity
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(tid % ncores, &cpuset);
+    const int rc =pthread_setaffinity_np(thread->native_handle(),sizeof(cpu_set_t), &cpuset);
+    if (rc != 0) {
+        fprintf(stderr, "Error setting thread affinity: %d\n", rc);
+        exit(1);
+    }
+    return rc;
+};
+
+inline int set_core(pthread_t *thread, int tid, const int ncores) {
+    // Set thread affinity
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(tid % ncores, &cpuset); // Assign thread to a core in a round-robin fashion
+    const int rc = pthread_setaffinity_np(*thread, sizeof(cpu_set_t), &cpuset);
+    if (rc != 0) {
+        fprintf(stderr, "Error setting thread affinity: %d\n", rc);
+        exit(1);
+    }
+    return rc;
+}
+
 // heap based algorithm for finding the k largest ranks
 // in heap order
 

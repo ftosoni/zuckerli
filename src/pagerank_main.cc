@@ -96,6 +96,14 @@ int main(int argc, char** argv) {
         fclose(outdegfile);
     }
 
+    //bind to core 0
+    {
+        const int ncores = sysconf(_SC_NPROCESSORS_ONLN); // Number of available cores; not really used
+        pthread_t main_thread = pthread_self(); // Get the identifier of the calling thread
+        const int tid = 0;
+        set_core(&main_thread,tid,ncores);
+    }
+
     //business logic
 
     //computing outdegree
